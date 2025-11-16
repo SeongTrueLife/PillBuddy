@@ -1,73 +1,79 @@
-# camera_service.py (공장 4호: v2.7.3 - '최신 심장' 버전)
+# camera_service.py (공장 4호: '전문 카메라' 엔진룸)
 
 import streamlit as st
-# (★ v2.7.3 수술 1!) '단종된' 'ClientSettings'를 '삭제'함!
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode 
-import av  
-import threading 
-from PIL import Image 
+# (🚨 'ClientSettings'는 '삭제'된 상태여야 함!)
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
+import av
+import threading
+from PIL import Image
 
-# --- ('문지기'와 '보관함'은 '그대로' 유지!) ---
+# 1. '문지기' (Lock)
 lock = threading.Lock() 
+
+# 2. '사진 보관함' (Container)
 img_container = {"img": None}
 
-# --- ('핵심 로직'도 '그대로' 유지!) ---
+
+# --- (★ 여기가 '새 심장'의 '핵심 로직'!) ---
 class AutoCameraTransformer(VideoTransformerBase):
     
-    def __init__(self):
-        self.frame_captured = False 
-    
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
+        """
+        (★ '수술 1' 핵심!)
+        '매 프레임'마다 '깃발'이 섰는지 '감시'한다.
+        'self.frame_captured' 같은 '자체 기억'을 '삭제'해서,
+        '깃발'만 서면 '언제든' 다시 찍을 수 있게 한다!
+        """
         
-        if not self.frame_captured:
-            if "take_picture" in st.session_state and st.session_state["take_picture"]:
-                
-                print("[공장 4호] '촬영 신호' 감지! 찰칵!")
-                img = frame.to_image() 
-                
-                with lock:
-                    img_container["img"] = img
-                
-                self.frame_captured = True
-                st.session_state["take_picture"] = False
+        # '깃발'('take_picture')이 'True'인지 '매 순간' 감시
+        if "take_picture" in st.session_state and st.session_state["take_picture"]:
+            
+            print("[공장 4호] '촬영 신호' 감지! 찰칵!")
+            
+            # 1. "찰칵!" (영상 프레임을 '사진(Image)'으로 변환)
+            img = frame.to_image() 
+            
+            # 2. '안전요원' 부르기 (Lock)
+            with lock:
+                # 3. '보관함'에 '사진' 넣기
+                img_container["img"] = img
+            
+            # 4. (★ '초-중요'!) 깃발을 '즉시' 내린다! (이게 '일꾼'의 '새 임무'!)
+            st.session_state["take_picture"] = False
 
+        # (카메라 '프리뷰'는 '계속' 보여줘야 하니까 'frame'은 '항상' 반환)
         return frame
+
 
 # --- (★ 이게 '메인 공장'이 '호출'할 '시동 버튼'!) ---
 def run_camera_service():
+    """
+    [공장 4호] '뒷면' 카메라 '엔진'을 '시동' 겁니다.
+    """
     
     video_constraints = {"facingMode": "environment"} 
 
-    # (★ v2.7.3 수술 2!) 'ClientSettings' '덩어리'를 '제거'하고,
-    # '알맹이'인 'rtc_configuration'만 '밖으로' '꺼냄'!
     ctx = webrtc_streamer(
-        key="webrtc-camera",
+        key="webrtc-camera", 
+        
+        # (★ '수술 1' 핵심! '자동 시동'!)
         desired_playing_state=True, 
+        
         mode=WebRtcMode.RECVONLY, 
         video_transformer_factory=AutoCameraTransformer, 
         media_stream_constraints={"video": video_constraints, "audio": False},
         async_processing=True, 
         
-        # (★ 여기가 '수술' 부위!)
-        # 'client_settings=ClientSettings(...)' '삭제' -> 'rtc_configuration'만 '남김'!
+        # (★ 'ClientSettings' 삭제' -> 'rtc_configuration'만 남김!)
         rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         
         video_html_attrs={
-            "style": "width: 100%; height: auto; border: 1px solid #ccc; transform: scaleX(-1);", 
+            "style": "display: none;", # (★ '프리뷰'는 '숨기기'!)
             "autoPlay": True, 
             "controls": False, 
             "muted": True,
         }
     )
     
-    if ctx.state.playing:
-        with lock:
-            captured_image = img_container["img"]
-        
-        if captured_image is not None:
-            print("[공장 4호] '보관함'에서 '캡처된 사진' 발견! '메인 공장'으로 '반환'!")
-            with lock:
-                img_container["img"] = None
-            return captured_image 
-            
-    return None
+    # (★ '성격 급한' '메인 공장'을 위해 '아무것도' 반환하지 않음!)
+    # (★ '보관함' 확인은 '메인 공장'이 '직접' 하도록 '변경'!)
