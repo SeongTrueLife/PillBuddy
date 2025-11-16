@@ -30,7 +30,7 @@ def clean_script(script_text):
 # --- (메인 공장: Streamlit UI 시작) ---
 st.set_page_config(layout="wide") 
 
-# --- 1. '기억' 초기화 ---
+# --- 1. '기억' 초기화 (★ '수술' 핵심!) ---
 if 'app_started' not in st.session_state:
     st.session_state['app_started'] = True
     st.session_state['camera_active'] = False 
@@ -40,6 +40,7 @@ if 'app_started' not in st.session_state:
     st.session_state['take_picture'] = False 
     st.session_state['image_to_process'] = None
     st.session_state['welcome_sound_played'] = False # (★ '환영 음성' '깃발'!)
+    st.session_state['checking_for_image'] = False # (★ '사장님' '대기' '깃발'!)
 
 # --- (★ '수술' 핵심!) '분석' 로직을 '맨 위'로 뺌! ---
 if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not None:
@@ -107,25 +108,38 @@ elif st.session_state['camera_active']:
 
     # ('촬영' 버튼!)
     if st.button("📸 촬영하기 (화면 아무 곳이나 터치)", use_container_width=True):
-        st.session_state["take_picture"] = True 
+        st.session_state["take_picture"] = True # (★ '일꾼'에게 '깃발' 세움!)
+        st.session_state["checking_for_image"] = True # (★ '사장님' '대기' '시작'!)
+        # (🚨 'rerun' 삭제! '자연스러운' rerun을 '유도'!)
 
-    # ('사장님'이 '보관함'을 '계속' '확인'!)
-    captured_image = None
-    with camera_service.lock:
-        if camera_service.img_container["img"] is not None:
-            captured_image = camera_service.img_container["img"]
-            camera_service.img_container["img"] = None 
+    # (★ '사장님'이 '사진'을 '기다리는' '대기실'!)
+    if st.session_state["checking_for_image"]:
+        
+        # (★ '보관함' '확인'!)
+        captured_image = None
+        with camera_service.lock:
+            if camera_service.img_container["img"] is not None:
+                captured_image = camera_service.img_container["img"]
+                camera_service.img_container["img"] = None # (★ '사장님'이 '직접' 비움!)
 
-    # (★ "어! '보관함'에 '사진'이 들어왔다!")
-    if captured_image is not None:
+        # (★ "어! '보관함'에 '사진'이 들어왔다!")
+        if captured_image is not None:
+            
+            # (★ '이사' 준비!)
+            st.session_state['checking_for_image'] = False # ('대기' 깃발 끔!)
+            st.session_state['camera_active'] = False
+            st.session_state['chat_mode'] = True
+            st.session_state['welcome_sound_played'] = False # ('다음'을 위해 '리셋')
+            st.session_state['image_to_process'] = captured_image 
+            
+            st.rerun() # (★ '상태 3' ('맨 위' 분석)로 '이동'!)
         
-        # (★ 'CCTV' '즉시' 끄고 '이사' 준비!)
-        st.session_state['camera_active'] = False
-        st.session_state['chat_mode'] = True
-        st.session_state['welcome_sound_played'] = False # ('다음'을 위해 '리셋')
-        st.session_state['image_to_process'] = captured_image 
-        
-        st.rerun() # (★ '상태 3' ('맨 위' 분석)로 '이동'!)
+        # (★ "아직... '사진'이 '안' 왔다...")
+        else:
+            # (★ '사장님'이 '초조하게' '기다림'!)
+            # (★ '일꾼'('webrtc' 스레드)이 '사진' 찍을 '시간'을 '벌어줌'!)
+            time.sleep(0.5) 
+            st.rerun() # (★ '보관함' '다시' '확인'하러 '새로고침'!)
 
 # (상태 1: '처음' 또는 '새 약 식별' 대기 모드 - (★ '스피커' '전용' 방!))
 else: 
