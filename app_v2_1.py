@@ -29,7 +29,7 @@ def clean_script(script_text):
 
 # --- (메인 공장: Streamlit UI 시작) ---
 st.set_page_config(layout="wide") # (이건 '계속' 가져감!)
-st.title("👁️ PillBuddy (v2.5 - '전체 화면' 버튼)")
+# (★ v2.6!) '제목'은 '상태 1'에서는 '숨김'
 
 # --- 1. '기억' 초기화 ---
 if 'app_started' not in st.session_state:
@@ -38,12 +38,11 @@ if 'app_started' not in st.session_state:
     st.session_state['chat_mode'] = False
     st.session_state['current_pill_name'] = None 
     st.session_state['current_rag_data'] = None 
-    # (v2.4에서 배운 대로, '첫 음성'은 여기서 트는 게 아님!)
-
-# --- (★ 여기가 'v2.5' 수술의 '핵심'!) ---
-
+    
 # (상태 3: '추가 질문' 대기 모드)
 if st.session_state['chat_mode']:
+    
+    st.title("👁️ PillBuddy (v2.6)") # (★ v2.6!) '상태 3'에서 '제목' 표시!
     
     # (v2.4에서 수술한 '재생' 로직 - (그대로 유지!))
     if 'audio_to_play' in st.session_state and st.session_state['audio_to_play']:
@@ -60,6 +59,9 @@ if st.session_state['chat_mode']:
     
 # (상태 2: '카메라' 작동 중)
 elif st.session_state['camera_active']:
+    
+    st.title("👁️ PillBuddy (v2.6)") # (★ v2.6!) '상태 2'에서 '제목' 표시!
+    
     # (v2.4에서 수술한 '처리' 로직 - (그대로 유지!))
     image_file = st.camera_input("알약을 찍어주세요...", key="camera")
     
@@ -90,7 +92,7 @@ elif st.session_state['camera_active']:
 
 # (상태 1: '처음' 또는 '새 약 식별' 대기 모드)
 else: 
-    # (★ 여기가 'CSS 마법'이 '주입'되는 곳!)
+    # (★ 여기가 'v2.6' 'CSS 마법'이 '주입'되는 곳!)
     st.markdown("""
         <style>
             /* Streamlit의 '메인 영역'의 '안쪽 여백'을 싹 다 없애버려! */
@@ -110,13 +112,15 @@ else:
             div.stButton > button {
                 height: 100%; 
                 width: 100%;
-                /* (버튼 '모양'은 굳이 안 숨겨도 됨. 꽉 차니까!) */
+                font-size: 1.5rem; /* (글자 크기도 좀 키우자!) */
+                font-weight: bold;
             }
         </style>
-    """, unsafe_allow_html=True) # (★ '마법' 허용!)
+    """, unsafe_allow_html=True) 
     
-    # (★ 'CSS 마법'이 적용된 '거대한' 버튼!)
-    if st.button("💊 약 식별 시작하기", use_container_width=True): # (텍스트는 짧게!)
+    # (★ 'v2.6' - 네 '아이디어'가 '적용'된 '거대한' 버튼!)
+    button_text = "👁️ PillBuddy\n\n(화면 아무 곳이나 터치하여 시작)"
+    if st.button(button_text, use_container_width=True): 
         
         # (v2.4 로직: '터치 직후'에 '첫 음성' 재생!)
         guide_text = "PillBuddy가 실행되었습니다. 카메라를 켭니다. 잠시 후, '알약을 찍어주세요' 영역을 터치하여 촬영해주세요."
@@ -126,6 +130,4 @@ else:
         st.session_state['chat_mode'] = False
         st.session_state['current_pill_name'] = None
         st.session_state['current_rag_data'] = None
-        st.session_state['camera_active'] = True 
-        
-        # (v2.4 로직: '첫 음성' 재생 시간 벌기 위해 'rerun' 삭제!)
+        st.session_state['camera_active'] = True
