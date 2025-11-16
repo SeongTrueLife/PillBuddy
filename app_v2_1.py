@@ -110,10 +110,12 @@ elif st.session_state['camera_active']:
     if st.button("📸 촬영하기 (화면 아무 곳이나 터치)", use_container_width=True):
         st.session_state["take_picture"] = True # (★ '일꾼'에게 '깃발' 세움!)
         st.session_state["checking_for_image"] = True # (★ '사장님' '대기' '시작'!)
-        # (🚨 'rerun' 삭제! '자연스러운' rerun을 '유도'!)
+        st.rerun() # (★ 'rerun' 필수! '일꾼'이 '사진' 찍을 '시간'을 '벌어줌'!)
 
     # (★ '사장님'이 '사진'을 '기다리는' '대기실'!)
     if st.session_state["checking_for_image"]:
+        
+        print(f"[메인 공장] '사진' 대기 중... (take_picture={st.session_state.get('take_picture', False)})")
         
         # (★ '보관함' '확인'!)
         captured_image = None
@@ -121,6 +123,7 @@ elif st.session_state['camera_active']:
             if camera_service.img_container["img"] is not None:
                 captured_image = camera_service.img_container["img"]
                 camera_service.img_container["img"] = None # (★ '사장님'이 '직접' 비움!)
+                print("[메인 공장] ✅ '사진' 발견! '상태 3'로 이동 준비...")
 
         # (★ "어! '보관함'에 '사진'이 들어왔다!")
         if captured_image is not None:
@@ -138,6 +141,7 @@ elif st.session_state['camera_active']:
         else:
             # (★ '사장님'이 '초조하게' '기다림'!)
             # (★ '일꾼'('webrtc' 스레드)이 '사진' 찍을 '시간'을 '벌어줌'!)
+            print("[메인 공장] ⏳ '사진' 아직 없음... 0.5초 후 다시 확인...")
             time.sleep(0.5) 
             st.rerun() # (★ '보관함' '다시' '확인'하러 '새로고침'!)
 
