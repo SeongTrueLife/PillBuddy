@@ -1,7 +1,7 @@
 # camera_service.py (공장 4호: '전문 카메라' 엔진룸)
 
 import streamlit as st
-from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode, ClientSettings
+from streamlit_webrtc import webrtc_streamer, VideoTransformerBase, WebRtcMode
 import av  # (이건 '비디오 프레임'을 다루는 '특수 부품')
 import threading # (이건 '동시 작업'을 위한 '안전장치')
 from PIL import Image # (이건 '이미지'를 다루는 '표준 부품')
@@ -87,10 +87,7 @@ def run_camera_service():
         async_processing=True, # (백그라운드에서 '부드럽게' 돌리기)
         
         # (★ '시각장애인'을 위해 '쓸데없는' '컨트롤 바'는 '숨기기'!)
-        client_settings=ClientSettings(
-            rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
-            media_stream_constraints={"video": video_constraints, "audio": False},
-        ),
+        rtc_configuration={"iceServers": [{"urls": ["stun:stun.l.google.com:19302"]}]},
         video_html_attrs={
             "style": "width: 100%; height: auto; border: 1px solid #ccc; transform: scaleX(-1);", 
             "autoPlay": True, 
