@@ -41,7 +41,8 @@ def run_camera_service():
     # (★ v2.7.3 수술 2!) 'ClientSettings' '덩어리'를 '제거'하고,
     # '알맹이'인 'rtc_configuration'만 '밖으로' '꺼냄'!
     ctx = webrtc_streamer(
-        key="webrtc-camera", 
+        key="webrtc-camera",
+        desired_playing_state=True, 
         mode=WebRtcMode.RECVONLY, 
         video_transformer_factory=AutoCameraTransformer, 
         media_stream_constraints={"video": video_constraints, "audio": False},
