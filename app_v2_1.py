@@ -3,9 +3,9 @@ import time
 import json 
 
 # --- (부품 공장들 수입) ---
-import e_yak_service 
-import gemini_service 
-import speech_service 
+import e_yak_service  
+import gemini_service  
+import speech_service  
 import camera_service 
 
 # --- ('웹 전용 스피커') ---
@@ -38,29 +38,18 @@ if 'app_started' not in st.session_state:
     st.session_state['current_pill_name'] = None 
     st.session_state['current_rag_data'] = None 
     st.session_state['take_picture'] = False 
-    st.session_state['state2_first_run'] = True # '상태 2' 첫 진입 '깃발'
-    st.session_state['analysis_pending'] = False # (★ '분석' 대기 '깃발'!)
+    st.session_state['image_to_process'] = None
+    st.session_state['welcome_sound_played'] = False # (★ '환영 음성' '깃발'!)
 
-# --- (★ '성격 급한 놈' 고치기 - '수술 2' 핵심!) ---
-# (★ '사진 보관함'을 '먼저' 확인하는 '새 로직'!)
-
-# '보관함'('img_container')이 '찼는지' '먼저' 확인!
-with camera_service.lock:
-    captured_image = camera_service.img_container["img"]
-
-# (★ '분석' 대기 깃발이 '서 있고' + '보관함'이 '찼다'면!)
-if st.session_state['analysis_pending'] and captured_image is not None:
+# --- (★ '수술' 핵심!) '분석' 로직을 '맨 위'로 뺌! ---
+if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not None:
     
-    # '보관함' '즉시' 비우기!
-    with camera_service.lock:
-        camera_service.img_container["img"] = None
+    captured_image = st.session_state.pop('image_to_process') 
     
-    # '깃발' 내리기!
-    st.session_state['analysis_pending'] = False
-    
-    # --- (★ '분석' & '상태 3' 로직 '시작'!) ---
+    # --- (★ '분석' & '상태 3' '음성' 로직 '시작'!) ---
+    # (★ 'CCTV'가 '꺼진' '안전한' 상태라 '무조건' '성공'!)
     audio_data_cam = speech_service.get_speech_data("사진을 받았습니다. AI가 분석 중입니다.")
-    play_audio(audio_data_cam) # (★ '여기서' 트는 건 '안전'함!)
+    play_audio(audio_data_cam) 
     
     pill_name = fake_yolo_model(captured_image) 
     drug_data_json = e_yak_service.get_drug_info(pill_name)
@@ -77,17 +66,10 @@ if st.session_state['analysis_pending'] and captured_image is not None:
     st.markdown(f"**[AI 약사 (1차 답변)]**\n\n{script}") 
     
     audio_data_main = speech_service.get_speech_data(cleaned) 
-    st.session_state['audio_to_play'] = audio_data_main # '상태 3'에서 쓸 '음성'
-    
-    # '상태' 변경!
-    st.session_state['camera_active'] = False 
-    st.session_state['chat_mode'] = True 
-    st.session_state['state2_first_run'] = True # (다음을 위해 '깃발' 리셋)
-    
-    st.rerun() # ('상태 3'으로 '이동'!)
+    st.session_state['audio_to_play'] = audio_data_main 
 
 # (상태 3: '추가 질문' 대기 모드)
-elif st.session_state['chat_mode']:
+if st.session_state['chat_mode']:
     
     st.title("👁️ PillBuddy (v2.7 - 분석 완료)") 
     
@@ -103,7 +85,7 @@ elif st.session_state['chat_mode']:
     st.subheader(f"'{st.session_state['current_pill_name']}'에 대해 추가 질문하기")
     st.info("⚠️ '추가 질문(마이크)' 기능은 현재 '수술 중'입니다.")
 
-# (상태 2: '카메라' 작동 중)
+# (상태 2: '카메라' 작동 중 - (★ 'CCTV' '전용' 방!))
 elif st.session_state['camera_active']:
     
     st.title("👁️ PillBuddy (v2.7 - 촬영 대기)")
@@ -117,28 +99,35 @@ elif st.session_state['camera_active']:
         </style>
     """, unsafe_allow_html=True)
     
-    # ('촬영' 버튼!)
-    if st.button("📸 촬영하기 (화면 아무 곳이나 터치)", use_container_width=True):
-        st.session_state["take_picture"] = True # (★ '일꾼'에게 '깃발'만 세움!)
-        st.session_state['analysis_pending'] = True # (★ '방송국'에 '대기' 깃발 세움!)
-        
-        # (★ '성격 급한 놈'을 위해 '일부러' 0.5초 '기다려줌'!)
-        # (★ '일꾼'이 '사진' 찍을 '시간'을 벌어주는 '마법'!)
-        time.sleep(0.5) 
-        st.rerun() # (★ '스스로' '새로고침'해서 '보관함' 확인하러 감!)
-
     # (★ 'CCTV'는 '조용히' '항상' 켜 둠)
+    # (★ '스피커'가 '없기' 때문에 '방해' 없이 '자동 시동' '성공'!)
     camera_service.run_camera_service()
 
-    # (★ '방송국' 충돌 해결!)
-    # (★ 'CCTV'가 '켜진 후'에 '스피커'를 켜야 '안전'함!)
-    if st.session_state['state2_first_run']:
-        guide_text = "PillBuddy가 실행되었습니다. 카메라가 켜집니다. 약을 준비하고, 화면 아무 곳이나 터치해 촬영해주세요."
-        audio_data = speech_service.get_speech_data(guide_text)
-        play_audio(audio_data) 
-        st.session_state['state2_first_run'] = False # ('깃발' 내려서 '반복 재생' 방지!)
+    # (★ '안내 음성' '완전 삭제' -> '미디어 충돌' '원천 봉쇄'!)
 
-# (상태 1: '처음' 또는 '새 약 식별' 대기 모드)
+    # ('촬영' 버튼!)
+    if st.button("📸 촬영하기 (화면 아무 곳이나 터치)", use_container_width=True):
+        st.session_state["take_picture"] = True 
+
+    # ('사장님'이 '보관함'을 '계속' '확인'!)
+    captured_image = None
+    with camera_service.lock:
+        if camera_service.img_container["img"] is not None:
+            captured_image = camera_service.img_container["img"]
+            camera_service.img_container["img"] = None 
+
+    # (★ "어! '보관함'에 '사진'이 들어왔다!")
+    if captured_image is not None:
+        
+        # (★ 'CCTV' '즉시' 끄고 '이사' 준비!)
+        st.session_state['camera_active'] = False
+        st.session_state['chat_mode'] = True
+        st.session_state['welcome_sound_played'] = False # ('다음'을 위해 '리셋')
+        st.session_state['image_to_process'] = captured_image 
+        
+        st.rerun() # (★ '상태 3' ('맨 위' 분석)로 '이동'!)
+
+# (상태 1: '처음' 또는 '새 약 식별' 대기 모드 - (★ '스피커' '전용' 방!))
 else: 
     # (CSS 마법)
     st.markdown("""
@@ -151,7 +140,21 @@ else:
     
     button_text = "👁️ PillBuddy\n\n(화면 아무 곳이나 터치하여 시작)"
     
-    # (★ '방송국' 충돌 해결!) '소리' 빼고 '즉시' 이동!
+    # (★ '수술' 핵심! '두 번'의 '탭'을 '설계'한다!)
     if st.button(button_text, use_container_width=True): 
-        st.session_state['camera_active'] = True # ('상태 2'로 '이동'!)
-        st.rerun() # ('강제' 이동!)
+        
+        # (★ '첫 번째' 탭인가?)
+        if not st.session_state['welcome_sound_played']:
+            
+            # (★ '안내 멘트' 수정!)
+            guide_text = "PillBuddy가 실행되었습니다. 이 음성이 끝나면, 화면 아무 곳이나 '다시 한번' 터치하여 카메라를 켜주세요."
+            audio_data = speech_service.get_speech_data(guide_text)
+            play_audio(audio_data) # (★ 'CCTV' 없으니 '안전'!)
+            
+            st.session_state['welcome_sound_played'] = True # ('깃발' 세움!)
+            # (★ 'rerun'이 '없어서' '소리'가 '끝까지' 나옴!)
+        
+        # (★ '두 번째' 탭인가?)
+        else:
+            st.session_state['camera_active'] = True # ('상태 2'로 '이동'!)
+            st.rerun() # ('강제' 이동!)
