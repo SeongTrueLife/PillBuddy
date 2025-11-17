@@ -106,11 +106,19 @@ if st.session_state['chat_mode']:
 # --- (상태 2: 카메라 촬영 모드) ---
 elif st.session_state['camera_active']:
     
-    st.title("👁️ PillBuddy - 약 촬영")
+    # 제목을 작게 표시 (또는 숨기기)
+    st.markdown("### 👁️ PillBuddy - 약 촬영")
     
     # CSS: 시각장애인을 위한 큰 버튼 (프리뷰는 작게, 버튼은 크게)
     st.markdown("""
         <style>
+            /* 제목을 작게 (또는 완전히 숨기려면 display: none 사용) */
+            h3 {
+                font-size: 1rem !important;
+                margin-bottom: 0.5rem !important;
+                padding: 0.25rem 0 !important;
+            }
+            
             /* 카메라 프리뷰를 작게 (상단에 작게 표시) */
             div[data-testid="stCameraInput"] video {
                 width: 100% !important;
@@ -127,9 +135,9 @@ elif st.session_state['camera_active']:
             /* 카메라 촬영 버튼을 화면 가득 크게 */
             div[data-testid="stCameraInput"] button {
                 width: 100% !important;
-                height: 80px !important;
-                min-height: 80px !important;
-                font-size: 2.5rem !important;
+                height: 120px !important;
+                min-height: 120px !important;
+                font-size: 3rem !important;
                 font-weight: bold !important;
                 background-color: #FF4B4B !important;
                 color: white !important;
@@ -140,15 +148,15 @@ elif st.session_state['camera_active']:
             
             /* 전체 화면 활용 */
             .main .block-container {
-                padding: 1rem !important;
+                padding: 0.5rem !important;
                 max-width: 100% !important;
             }
             
             /* 취소 버튼 스타일 */
             div.stButton > button {
                 width: 100% !important;
-                height: 60px !important;
-                font-size: 1.5rem !important;
+                height: 70px !important;
+                font-size: 1.8rem !important;
                 font-weight: bold !important;
             }
         </style>
