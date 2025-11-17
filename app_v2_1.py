@@ -48,7 +48,6 @@ if 'app_started' not in st.session_state:
     st.session_state['welcome_sound_played'] = False
     st.session_state['camera_guide_played'] = False
     st.session_state['chat_history'] = []
-    st.session_state['followup_instruction_played'] = False
     st.session_state['followup_audio_to_play'] = None
     st.session_state['followup_input'] = ""
 
@@ -68,7 +67,6 @@ if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not
     st.session_state['current_pill_name'] = pill_name
     st.session_state['current_rag_data'] = drug_data_json
     st.session_state['chat_history'] = []
-    st.session_state['followup_instruction_played'] = False
     st.session_state['followup_input'] = ""
     st.session_state['followup_audio_to_play'] = None
     
@@ -80,9 +78,17 @@ if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not
     
     cleaned = clean_script(script)
     st.markdown(f"**[AI 약사 (1차 답변)]**\n\n{script}") 
+
+    followup_instruction_text = (
+        "추가 질문을 텍스트로 입력하는 방법을 안내해 드립니다. "
+        "화면 중앙의 넓은 입력 상자를 한 번 터치해 선택하고, 두 번 더 터치해 스마트폰 키보드를 여세요. "
+        "질문을 입력한 뒤 입력창 아래의 파란색 질문 전송 버튼을 두 번 눌러 전송하면 됩니다. "
+        "답변이 준비되면 PillBuddy가 화면에 보여 주고 음성으로도 읽어 드립니다."
+    )
+    full_audio_text = f"{cleaned} {followup_instruction_text}"
     
     # 음성 재생 준비
-    audio_data_main = speech_service.get_speech_data(cleaned) 
+    audio_data_main = speech_service.get_speech_data(full_audio_text) 
     st.session_state['audio_to_play'] = audio_data_main 
 
 # --- (상태 3: 분석 완료 및 추가 질문 대기) ---
@@ -99,18 +105,6 @@ if st.session_state['chat_mode']:
     if st.session_state.get('followup_audio_to_play'):
         followup_audio = st.session_state.pop('followup_audio_to_play')
         play_audio(followup_audio)
-
-    # 텍스트 입력 안내 음성 (1회 재생)
-    if not st.session_state.get('followup_instruction_played', False):
-        followup_guide_text = (
-            "추가 질문을 텍스트로 입력하는 방법을 안내해 드립니다. "
-            "화면 중앙의 넓은 입력 상자를 한 번 터치해 포커스를 옮기고, 두 번 더 터치해 스마트폰 키보드를 여세요. "
-            "질문을 입력한 뒤 입력창 아래의 파란색 질문 전송 버튼을 두 번 눌러 전송하면 됩니다. "
-            "답변이 준비되면 PillBuddy가 화면에 보여 주고 음성으로도 읽어 드립니다."
-        )
-        guide_audio_data = speech_service.get_speech_data(followup_guide_text)
-        play_audio(guide_audio_data)
-        st.session_state['followup_instruction_played'] = True
 
     st.markdown("---")
     st.subheader(f"'{st.session_state['current_pill_name']}'에 대해 추가 질문하기")
@@ -173,7 +167,6 @@ if st.session_state['chat_mode']:
         st.session_state['welcome_sound_played'] = False
         st.session_state['camera_guide_played'] = False
         st.session_state['chat_history'] = []
-        st.session_state['followup_instruction_played'] = False
         st.session_state['followup_audio_to_play'] = None
         st.session_state['followup_input'] = ""
         st.rerun()
