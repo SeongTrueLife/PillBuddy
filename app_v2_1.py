@@ -86,10 +86,6 @@ if st.session_state['chat_mode']:
     if 'audio_to_play' in st.session_state and st.session_state['audio_to_play']:
         main_audio_data = st.session_state.pop('audio_to_play')
         play_audio(main_audio_data)
-        
-        guide_text = "더 궁금한 점이 있으시면... (현재 '추가 질문' 기능은 수술 중입니다.)"
-        guide_audio_data = speech_service.get_speech_data(guide_text)
-        play_audio(guide_audio_data)
     
     st.markdown("---")
     st.subheader(f"'{st.session_state['current_pill_name']}'에 대해 추가 질문하기")
