@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 from PIL import Image
+from io import BytesIO
 
 # --- (부품 공장들 수입) ---
 import e_yak_service  
@@ -185,19 +186,29 @@ elif st.session_state['camera_active']:
     
     # 이미지가 촬영되면 즉시 처리
     if captured_image is not None:
-        print(f"[메인 공장] ✅ 사진 촬영 완료! 이미지 크기: {captured_image.size}")
-        
-        # PIL Image로 변환
-        img = Image.open(captured_image)
-        
-        # 상태 변경
-        st.session_state['camera_active'] = False
-        st.session_state['chat_mode'] = True
-        st.session_state['welcome_sound_played'] = False
-        st.session_state['camera_guide_played'] = False
-        st.session_state['image_to_process'] = img
-        
-        st.rerun()
+        try:
+            # UploadedFile을 PIL Image로 변환
+            # 방법 1: getvalue()로 바이트 데이터 읽기
+            image_bytes = captured_image.getvalue()
+            print(f"[메인 공장] ✅ 사진 촬영 완료! 이미지 바이트 크기: {len(image_bytes)}")
+            
+            # BytesIO로 변환 후 PIL Image로 열기
+            img = Image.open(BytesIO(image_bytes))
+            print(f"[메인 공장] ✅ PIL Image 변환 성공! 이미지 크기: {img.size}")
+            
+            # 상태 변경
+            st.session_state['camera_active'] = False
+            st.session_state['chat_mode'] = True
+            st.session_state['welcome_sound_played'] = False
+            st.session_state['camera_guide_played'] = False
+            st.session_state['image_to_process'] = img
+            
+            st.rerun()
+            
+        except Exception as e:
+            print(f"[메인 공장 / 오류!] 이미지 처리 실패: {e}")
+            st.error(f"이미지 처리 중 오류가 발생했습니다: {e}")
+            st.info("다시 촬영해주세요.")
     
     # 취소 버튼
     if st.button("❌ 취소", use_container_width=True):
