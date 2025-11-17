@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PillBuddy Test Client</title>
+    <style>
+      body {
+        margin: 0;
+        font-family: "Noto Sans KR", sans-serif;
+        background-color: #ffffff;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        padding: 16px;
+        gap: 16px;
+      }
+
+      video {
+        width: 100%;
+        max-width: 480px;
+        border-radius: 12px;
+        background: #000;
+      }
+
+      button {
+        width: 80%;
+        max-width: 360px;
+        height: 80px;
+        font-size: 1.5rem;
+        font-weight: bold;
+        background-color: #ff4b4b;
+        color: #fff;
+        border: none;
+        border-radius: 16px;
+        cursor: pointer;
+      }
+
+      button:active {
+        transform: scale(0.98);
+      }
+
+      #result {
+        width: 100%;
+        max-width: 480px;
+        min-height: 150px;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        padding: 16px;
+        background-color: #fafafa;
+        overflow-y: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>PillBuddy Demo</h1>
+    <video id="preview" autoplay playsinline></video>
+    <button id="captureButton">촬영하기</button>
+    <div id="result">결과가 여기에 표시됩니다.</div>
+
+    <script>
+      const video = document.getElementById("preview");
+      const captureButton = document.getElementById("captureButton");
+      const resultDiv = document.getElementById("result");
+
+      async function initCamera() {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { exact: "environment" } },
+            audio: false,
+          });
+          video.srcObject = stream;
+        } catch (error) {
+          alert("카메라 접근 권한이 필요합니다: " + error.message);
+        }
+      }
+
+      async function captureAndSend() {
+        try {
+          const canvas = document.createElement("canvas");
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+          const blob = await new Promise((resolve) =>
+            canvas.toBlob(resolve, "image/jpeg")
+          );
+
+          if (!blob) {
+            alert("이미지 캡처에 실패했습니다.");
+            return;
+          }
+
+          const formData = new FormData();
+          formData.append("file", blob, "capture.jpg");
+
+          const response = await fetch(
+            "http://127.0.0.1:8000/api/v1/pills/identify",
+            {
+              method: "POST",
+              body: formData,
+            }
+          );
+
+          if (!response.ok) {
+            throw new Error("서버 요청 실패");
+          }
+
+          const data = await response.json();
+          const { pill_name, script, audio_base64 } = data;
+
+          resultDiv.innerHTML = `
+            <strong>약 이름:</strong> ${pill_name}<br />
+            <strong>설명:</strong> ${script}
+          `;
+
+          if (audio_base64) {
+            const audio = new Audio(
+              "data:audio/mp3;base64," + audio_base64
+            );
+            await audio.play();
+          } else {
+            alert("오디오 데이터가 없습니다.");
+          }
+        } catch (error) {
+          console.error(error);
+          alert("촬영 또는 서버 통신 중 문제가 발생했습니다: " + error.message);
+        }
+      }
+
+      captureButton.addEventListener("click", captureAndSend);
+      window.addEventListener("load", initCamera);
+    </script>
+  </body>
+</html>
+
