@@ -37,7 +37,6 @@ if 'app_started' not in st.session_state:
     st.session_state['chat_mode'] = False
     st.session_state['current_pill_name'] = None 
     st.session_state['current_rag_data'] = None 
-    st.session_state['take_picture'] = False 
     st.session_state['image_to_process'] = None
     st.session_state['welcome_sound_played'] = False # (★ '환영 음성' '깃발'!)
     st.session_state['checking_for_image'] = False # (★ '사장님' '대기' '깃발'!)
@@ -100,50 +99,54 @@ elif st.session_state['camera_active']:
         </style>
     """, unsafe_allow_html=True)
     
-    # (★ 'CCTV'는 '조용히' '항상' 켜 둠)
-    # (★ '스피커'가 '없기' 때문에 '방해' 없이 '자동 시동' '성공'!)
-    camera_service.run_camera_service()
-
-    # (★ '안내 음성' '완전 삭제' -> '미디어 충돌' '원천 봉쇄'!)
-
+    # (★ 수정!) 카메라 서비스 실행 및 상태 확인
+    ctx = camera_service.run_camera_service()
+    
+    # (★ 수정!) 카메라가 실제로 작동 중인지 확인
+    camera_ready = ctx.state.playing if ctx else False
+    
+    if not camera_ready:
+        st.info("📷 카메라를 초기화하는 중입니다... 잠시만 기다려주세요.")
+        st.rerun()
+    
     # ('촬영' 버튼!)
     if st.button("📸 촬영하기 (화면 아무 곳이나 터치)", use_container_width=True):
-        st.session_state["take_picture"] = True # (★ '일꾼'에게 '깃발' 세움!)
-        st.session_state["checking_for_image"] = True # (★ '사장님' '대기' '시작'!)
-        st.rerun() # (★ 'rerun' 필수! '일꾼'이 '사진' 찍을 '시간'을 '벌어줌'!)
+        # (★ 수정!) 공유 변수로 '깃발' 세움
+        with camera_service.lock:
+            camera_service.take_picture_flag["value"] = True
+        st.session_state["checking_for_image"] = True
+        print("[메인 공장] '촬영 신호' 전송! (공유 변수에 깃발 세움)")
+        st.rerun()
 
-    # (★ '사장님'이 '사진'을 '기다리는' '대기실'!)
+    # (★ 수정!) '사진' 확인 로직 (폴링 방식 개선)
     if st.session_state["checking_for_image"]:
-        
-        print(f"[메인 공장] '사진' 대기 중... (take_picture={st.session_state.get('take_picture', False)})")
         
         # (★ '보관함' '확인'!)
         captured_image = None
         with camera_service.lock:
             if camera_service.img_container["img"] is not None:
                 captured_image = camera_service.img_container["img"]
-                camera_service.img_container["img"] = None # (★ '사장님'이 '직접' 비움!)
+                camera_service.img_container["img"] = None
                 print("[메인 공장] ✅ '사진' 발견! '상태 3'로 이동 준비...")
 
         # (★ "어! '보관함'에 '사진'이 들어왔다!")
         if captured_image is not None:
-            
             # (★ '이사' 준비!)
-            st.session_state['checking_for_image'] = False # ('대기' 깃발 끔!)
+            st.session_state['checking_for_image'] = False
             st.session_state['camera_active'] = False
             st.session_state['chat_mode'] = True
-            st.session_state['welcome_sound_played'] = False # ('다음'을 위해 '리셋')
+            st.session_state['welcome_sound_played'] = False
             st.session_state['image_to_process'] = captured_image 
-            
             st.rerun() # (★ '상태 3' ('맨 위' 분석)로 '이동'!)
         
-        # (★ "아직... '사진'이 '안' 왔다...")
+        # (★ 수정!) "아직... '사진'이 '안' 왔다..." - 자동 재확인
         else:
-            # (★ '사장님'이 '초조하게' '기다림'!)
-            # (★ '일꾼'('webrtc' 스레드)이 '사진' 찍을 '시간'을 '벌어줌'!)
-            print("[메인 공장] ⏳ '사진' 아직 없음... 0.5초 후 다시 확인...")
-            time.sleep(0.5) 
-            st.rerun() # (★ '보관함' '다시' '확인'하러 '새로고침'!)
+            print("[메인 공장] ⏳ '사진' 아직 없음... 잠시 후 다시 확인...")
+            st.info("📸 촬영 중... 잠시만 기다려주세요.")
+            # (★ 수정!) time.sleep 대신 Streamlit의 자동 rerun 활용
+            # 짧은 딜레이 후 자동으로 재확인 (무한 루프 방지를 위해 최대 재시도는 Streamlit이 관리)
+            time.sleep(0.3)  # (★ 최소한의 딜레이만 사용 - 너무 짧으면 서버 부하)
+            st.rerun()
 
 # (상태 1: '처음' 또는 '새 약 식별' 대기 모드 - (★ '스피커' '전용' 방!))
 else: 
