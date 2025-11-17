@@ -107,54 +107,80 @@ elif st.session_state['camera_active']:
     
     st.title("👁️ PillBuddy - 약 촬영")
     
-    # CSS: 시각장애인을 위한 큰 버튼과 카메라 영역
+    # CSS: 시각장애인을 위한 화면 가득 버튼 (프리뷰 숨기기 시도)
     st.markdown("""
         <style>
-            /* 카메라 입력 영역을 크게 */
-            div[data-testid="stCameraInput"] {
-                width: 100% !important;
-                margin-bottom: 2rem !important;
+            /* 카메라 프리뷰 영역 숨기기 */
+            div[data-testid="stCameraInput"] > div:first-child {
+                display: none !important;
             }
             
-            /* 카메라 촬영 버튼을 크게 */
+            /* 카메라 프리뷰 비디오 숨기기 */
+            div[data-testid="stCameraInput"] video {
+                display: none !important;
+            }
+            
+            /* 카메라 입력 영역 전체를 버튼 영역으로 */
+            div[data-testid="stCameraInput"] {
+                width: 100% !important;
+                height: 100vh !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            
+            /* 카메라 촬영 버튼을 화면 가득 크게 */
             div[data-testid="stCameraInput"] button {
                 width: 100% !important;
-                height: 80px !important;
-                font-size: 2rem !important;
+                height: 100vh !important;
+                font-size: 3rem !important;
                 font-weight: bold !important;
                 background-color: #FF4B4B !important;
                 color: white !important;
+                border: none !important;
+                border-radius: 0 !important;
+                position: fixed !important;
+                top: 0 !important;
+                left: 0 !important;
+                z-index: 999 !important;
             }
             
             /* 전체 화면 활용 */
             .main .block-container {
-                padding: 2rem !important;
+                padding: 0rem !important;
                 max-width: 100% !important;
             }
             
-            /* 큰 버튼 스타일 */
+            /* 제목 숨기기 (선택적) */
+            h1 {
+                display: none !important;
+            }
+            
+            /* 취소 버튼 스타일 */
             div.stButton > button {
                 width: 100% !important;
                 height: 80px !important;
                 font-size: 1.5rem !important;
                 font-weight: bold !important;
+                position: relative !important;
+                z-index: 1000 !important;
             }
         </style>
     """, unsafe_allow_html=True)
     
     # 카메라 가이드 음성 (한 번만 재생)
     if not st.session_state['camera_guide_played']:
-        guide_text = "약을 카메라 앞에 놓고, 화면 하단의 큰 빨간 촬영 버튼을 눌러주세요."
+        guide_text = "약을 카메라 앞에 놓고, 화면 전체를 덮는 큰 빨간 촬영 버튼을 눌러주세요. 버튼은 화면 전체를 차지하고 있습니다."
         audio_data = speech_service.get_speech_data(guide_text)
         play_audio(audio_data)
         st.session_state['camera_guide_played'] = True
-        st.rerun()
+        # (★ 수정!) rerun 제거 - 음성이 재생되는 동안 페이지 유지
     
-    # st.camera_input 사용 (시각장애인을 위한 큰 버튼)
+    # st.camera_input 사용 (시각장애인을 위한 화면 가득 버튼)
+    # (참고: 프리뷰는 CSS로 숨기고 버튼만 표시)
     captured_image = st.camera_input(
-        "약을 카메라 앞에 놓고 촬영 버튼을 눌러주세요",
+        "약을 카메라 앞에 놓고 화면 전체를 덮는 큰 빨간 촬영 버튼을 눌러주세요",
         key="pill_camera",
-        help="약을 카메라 앞에 놓고 하단의 큰 빨간 촬영 버튼을 눌러주세요."
+        help="약을 카메라 앞에 놓고 화면 전체를 덮는 큰 빨간 촬영 버튼을 눌러주세요."
     )
     
     # 이미지가 촬영되면 즉시 처리
@@ -212,7 +238,7 @@ else:
             audio_data = speech_service.get_speech_data(guide_text)
             play_audio(audio_data)
             st.session_state['welcome_sound_played'] = True
-            st.rerun()
+            # (★ 수정!) rerun 제거 - 음성이 재생되는 동안 페이지 유지
         
         # 두 번째 클릭: 카메라 활성화
         else:
