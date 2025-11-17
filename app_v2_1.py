@@ -109,7 +109,7 @@ elif st.session_state['camera_active']:
     # 제목을 작게 표시 (또는 숨기기)
     st.markdown("### 👁️ PillBuddy - 약 촬영")
     
-    # CSS: 시각장애인을 위한 큰 버튼 (프리뷰는 작게, 버튼은 크게)
+    # CSS + JavaScript: 시각장애인을 위한 큰 버튼 + 후면 카메라 자동 설정
     st.markdown("""
         <style>
             /* 제목을 작게 (또는 완전히 숨기려면 display: none 사용) */
@@ -160,6 +160,61 @@ elif st.session_state['camera_active']:
                 font-weight: bold !important;
             }
         </style>
+        
+        <script>
+        // 후면 카메라로 자동 전환
+        function switchToRearCamera() {
+            // 비디오 요소 찾기
+            const video = document.querySelector('div[data-testid="stCameraInput"] video');
+            if (!video) {
+                // 비디오가 아직 로드되지 않았으면 잠시 후 다시 시도
+                setTimeout(switchToRearCamera, 500);
+                return;
+            }
+            
+            // 현재 스트림 가져오기
+            const stream = video.srcObject;
+            if (!stream) {
+                setTimeout(switchToRearCamera, 500);
+                return;
+            }
+            
+            // 후면 카메라로 재설정
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment'  // 후면 카메라
+                }
+            }).then(function(newStream) {
+                // 기존 스트림 트랙 중지
+                stream.getTracks().forEach(track => track.stop());
+                
+                // 새 스트림 설정
+                video.srcObject = newStream;
+                console.log('✅ 후면 카메라로 전환 완료');
+            }).catch(function(err) {
+                console.log('⚠️ 후면 카메라 전환 실패:', err);
+            });
+        }
+        
+        // 페이지 로드 시 실행
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', function() {
+                setTimeout(switchToRearCamera, 1000);
+            });
+        } else {
+            setTimeout(switchToRearCamera, 1000);
+        }
+        
+        // Streamlit이 동적으로 요소를 추가할 수 있으므로 MutationObserver 사용
+        const observer = new MutationObserver(function(mutations) {
+            setTimeout(switchToRearCamera, 500);
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        </script>
     """, unsafe_allow_html=True)
     
     # 카메라 가이드 음성 (한 번만 재생)
