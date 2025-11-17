@@ -162,52 +162,78 @@ elif st.session_state['camera_active']:
         </style>
         
         <script>
-        // 후면 카메라로 자동 전환
+        // 후면 카메라로 자동 전환 (더 정교한 방법)
+        let cameraSwitched = false;
+        
         function switchToRearCamera() {
+            if (cameraSwitched) return; // 이미 전환했으면 중복 실행 방지
+            
             // 비디오 요소 찾기
             const video = document.querySelector('div[data-testid="stCameraInput"] video');
             if (!video) {
-                // 비디오가 아직 로드되지 않았으면 잠시 후 다시 시도
-                setTimeout(switchToRearCamera, 500);
                 return;
             }
             
             // 현재 스트림 가져오기
             const stream = video.srcObject;
             if (!stream) {
-                setTimeout(switchToRearCamera, 500);
                 return;
+            }
+            
+            // 이미 후면 카메라인지 확인
+            const videoTrack = stream.getVideoTracks()[0];
+            if (videoTrack) {
+                const settings = videoTrack.getSettings();
+                if (settings.facingMode === 'environment') {
+                    console.log('✅ 이미 후면 카메라입니다');
+                    cameraSwitched = true;
+                    return;
+                }
             }
             
             // 후면 카메라로 재설정
             navigator.mediaDevices.getUserMedia({
                 video: {
-                    facingMode: 'environment'  // 후면 카메라
+                    facingMode: { ideal: 'environment' },  // 후면 카메라 우선
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
                 }
             }).then(function(newStream) {
                 // 기존 스트림 트랙 중지
-                stream.getTracks().forEach(track => track.stop());
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
                 
                 // 새 스트림 설정
                 video.srcObject = newStream;
+                cameraSwitched = true;
                 console.log('✅ 후면 카메라로 전환 완료');
             }).catch(function(err) {
                 console.log('⚠️ 후면 카메라 전환 실패:', err);
+                // 실패해도 계속 시도하지 않음 (사용자에게 안내)
             });
+        }
+        
+        // 여러 시점에서 시도
+        function trySwitchCamera() {
+            switchToRearCamera();
+            setTimeout(switchToRearCamera, 1000);
+            setTimeout(switchToRearCamera, 2000);
+            setTimeout(switchToRearCamera, 3000);
         }
         
         // 페이지 로드 시 실행
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', function() {
-                setTimeout(switchToRearCamera, 1000);
-            });
+            document.addEventListener('DOMContentLoaded', trySwitchCamera);
         } else {
-            setTimeout(switchToRearCamera, 1000);
+            trySwitchCamera();
         }
         
         // Streamlit이 동적으로 요소를 추가할 수 있으므로 MutationObserver 사용
         const observer = new MutationObserver(function(mutations) {
-            setTimeout(switchToRearCamera, 500);
+            if (!cameraSwitched) {
+                setTimeout(switchToRearCamera, 500);
+            }
         });
         
         observer.observe(document.body, {
@@ -219,11 +245,14 @@ elif st.session_state['camera_active']:
     
     # 카메라 가이드 음성 (한 번만 재생)
     if not st.session_state['camera_guide_played']:
-        guide_text = "약을 카메라 앞에 놓고, 화면 하단의 큰 빨간 촬영 버튼을 눌러주세요. 버튼은 화면 하단에 크게 표시되어 있습니다."
+        guide_text = "약을 촬영하기 위해 후면 카메라를 사용해야 합니다. 화면 오른쪽 위에 있는 작은 카메라 전환 버튼을 찾아서 눌러주세요. 버튼을 누르면 후면 카메라로 전환됩니다. 전환이 완료되면, 약을 카메라 앞에 놓고 화면 하단의 큰 빨간 촬영 버튼을 눌러주세요."
         audio_data = speech_service.get_speech_data(guide_text)
         play_audio(audio_data)
         st.session_state['camera_guide_played'] = True
         # (★ 수정!) rerun 제거 - 음성이 재생되는 동안 페이지 유지
+    
+    # 후면 카메라 전환 안내 (시각적)
+    st.info("📷 **후면 카메라 사용 안내**: 화면 오른쪽 위의 카메라 전환 버튼을 눌러 후면 카메라로 전환해주세요.")
     
     # st.camera_input 사용 (프리뷰는 작게, 버튼은 크게)
     captured_image = st.camera_input(
