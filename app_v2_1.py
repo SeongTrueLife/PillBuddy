@@ -175,9 +175,6 @@ elif st.session_state['camera_active']:
         st.session_state['camera_guide_played'] = True
         # (★ 수정!) rerun 제거 - 음성이 재생되는 동안 페이지 유지
     
-    # 안내 문구 (시각적)
-    st.info("📷 현재 전면 카메라가 켜져 있습니다. 약을 얼굴 쪽으로 들어 카메라에 보이게 한 뒤 하단의 큰 빨간 버튼을 누르세요. 후면 카메라를 사용하려면 프리뷰 오른쪽 가장자리 중간에 있는 작은 '카메라 전환' 버튼을 눌러주세요.")
-    
     # st.camera_input 사용 (프리뷰는 작게, 버튼은 크게)
     captured_image = st.camera_input(
         "약을 전면 카메라에 보이도록 들어 올린 뒤, 아래의 큰 빨간 촬영 버튼을 눌러주세요",
