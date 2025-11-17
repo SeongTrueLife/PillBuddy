@@ -191,9 +191,11 @@ else:
             play_audio(audio_data) # (★ 'CCTV' 없으니 '안전'!)
             
             st.session_state['welcome_sound_played'] = True # ('깃발' 세움!)
-            # (★ 'rerun'이 '없어서' '소리'가 '끝까지' 나옴!)
+            # (★ 수정!) rerun 추가하여 상태 업데이트 - 두 번째 클릭을 기다릴 수 있게 함
+            st.rerun()
         
         # (★ '두 번째' 탭인가?)
         else:
+            print("[메인 공장] 두 번째 버튼 클릭 감지! 카메라 활성화...")
             st.session_state['camera_active'] = True # ('상태 2'로 '이동'!)
             st.rerun() # ('강제' 이동!)
