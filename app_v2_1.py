@@ -47,6 +47,10 @@ if 'app_started' not in st.session_state:
     st.session_state['image_to_process'] = None
     st.session_state['welcome_sound_played'] = False
     st.session_state['camera_guide_played'] = False
+    st.session_state['chat_history'] = []
+    st.session_state['followup_instruction_played'] = False
+    st.session_state['followup_audio_to_play'] = None
+    st.session_state['followup_input'] = ""
 
 # --- (분석 로직: 이미지가 있으면 즉시 처리) ---
 if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not None:
@@ -54,7 +58,7 @@ if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not
     captured_image = st.session_state.pop('image_to_process') 
     
     # 음성 안내: 사진 받음
-    audio_data_cam = speech_service.get_speech_data("사진을 받았습니다. AI가 분석 중입니다.")
+    audio_data_cam = speech_service.get_speech_data("사진을 받았습니다. AI가 분석 중입니다. 잠시만 그대로 기다려 주세요.")
     play_audio(audio_data_cam) 
     
     # 약 분석
@@ -63,6 +67,10 @@ if st.session_state['chat_mode'] and st.session_state['image_to_process'] is not
     
     st.session_state['current_pill_name'] = pill_name
     st.session_state['current_rag_data'] = drug_data_json
+    st.session_state['chat_history'] = []
+    st.session_state['followup_instruction_played'] = False
+    st.session_state['followup_input'] = ""
+    st.session_state['followup_audio_to_play'] = None
     
     # AI 요약 생성
     if drug_data_json is not None: 
@@ -87,9 +95,76 @@ if st.session_state['chat_mode']:
         main_audio_data = st.session_state.pop('audio_to_play')
         play_audio(main_audio_data)
     
+    # 추가 질문 답변 음성 재생
+    if st.session_state.get('followup_audio_to_play'):
+        followup_audio = st.session_state.pop('followup_audio_to_play')
+        play_audio(followup_audio)
+
+    # 텍스트 입력 안내 음성 (1회 재생)
+    if not st.session_state.get('followup_instruction_played', False):
+        followup_guide_text = (
+            "추가 질문을 텍스트로 입력하는 방법을 안내해 드립니다. "
+            "화면 중앙의 넓은 입력 상자를 한 번 터치해 포커스를 옮기고, 두 번 더 터치해 스마트폰 키보드를 여세요. "
+            "질문을 입력한 뒤 입력창 아래의 파란색 질문 전송 버튼을 두 번 눌러 전송하면 됩니다. "
+            "답변이 준비되면 PillBuddy가 화면에 보여 주고 음성으로도 읽어 드립니다."
+        )
+        guide_audio_data = speech_service.get_speech_data(followup_guide_text)
+        play_audio(guide_audio_data)
+        st.session_state['followup_instruction_played'] = True
+
     st.markdown("---")
     st.subheader(f"'{st.session_state['current_pill_name']}'에 대해 추가 질문하기")
-    st.info("⚠️ '추가 질문(마이크)' 기능은 현재 '수술 중'입니다.")
+    st.info(
+        "1) 화면 중앙의 흰색 입력 상자를 한 번 터치해 선택합니다.\n"
+        "2) 두 번 더 터치하면 스마트폰 키보드가 열립니다. 음성 입력 버튼을 이용하면 말로도 입력할 수 있습니다.\n"
+        "3) 질문을 다 적었다면 아래 파란색 '질문 전송' 버튼을 두 번 눌러 전송하세요.\n"
+        "4) 답변이 도착하면 화면에 표시되고 PillBuddy가 음성으로도 안내합니다."
+    )
+
+    st.markdown("#### ✍️ PillBuddy에게 텍스트로 질문하기")
+    st.caption("TIP: 화면 리더, 확대 기능, 음성 입력 버튼을 사용하면 더 편하게 질문할 수 있어요.")
+    
+    st.text_area(
+        "추가 질문 입력",
+        key="followup_input",
+        height=180,
+        placeholder="예) 이 약은 식전에 먹어야 하나요?",
+    )
+
+    if st.button("✉️ PillBuddy에게 질문 전송", use_container_width=True, type="primary"):
+        question = st.session_state.get('followup_input', '').strip()
+        if not question:
+            st.warning("질문을 입력한 뒤 전송해 주세요.")
+        else:
+            with st.spinner("AI 약사가 답변을 준비하고 있습니다..."):
+                if st.session_state.get('current_rag_data'):
+                    answer = gemini_service.answer_follow_up_with_rag(
+                        question,
+                        st.session_state['current_rag_data']
+                    )
+                else:
+                    answer = gemini_service.answer_follow_up_backup(
+                        question,
+                        st.session_state.get('current_pill_name', "")
+                    )
+            cleaned_answer = clean_script(answer)
+            st.session_state['chat_history'].append({
+                "question": question,
+                "answer": answer,
+                "answer_cleaned": cleaned_answer
+            })
+            audio_data_followup = speech_service.get_speech_data(cleaned_answer)
+            if audio_data_followup:
+                st.session_state['followup_audio_to_play'] = audio_data_followup
+            st.session_state['followup_input'] = ""
+            st.rerun()
+
+    if st.session_state['chat_history']:
+        st.markdown("#### 📚 추가 질문 기록")
+        for idx, item in enumerate(st.session_state['chat_history'], start=1):
+            st.markdown(f"**Q{idx}. 사용자 질문**\n\n{item['question']}")
+            st.markdown(f"**AI 약사 답변**\n\n{item['answer']}")
+            st.divider()
     
     # 새 약 식별 버튼
     if st.button("🔄 새 약 식별하기", use_container_width=True, type="primary"):
@@ -97,6 +172,10 @@ if st.session_state['chat_mode']:
         st.session_state['camera_active'] = False
         st.session_state['welcome_sound_played'] = False
         st.session_state['camera_guide_played'] = False
+        st.session_state['chat_history'] = []
+        st.session_state['followup_instruction_played'] = False
+        st.session_state['followup_audio_to_play'] = None
+        st.session_state['followup_input'] = ""
         st.rerun()
 
 # --- (상태 2: 카메라 촬영 모드) ---
