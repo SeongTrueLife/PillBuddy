@@ -19,19 +19,27 @@ take_picture_flag = {"value": False}
 # --- (★ 여기가 '새 심장'의 '핵심 로직'!) ---
 class AutoCameraTransformer(VideoTransformerBase):
     
+    def __init__(self):
+        super().__init__()
+        self.frame_count = 0  # (★ 디버깅!) 프레임 카운터
+    
     def recv(self, frame: av.VideoFrame) -> av.VideoFrame:
         """
         (★ 수정: 스레드 안전한 공유 변수 사용!)
         '매 프레임'마다 '깃발'이 섰는지 '감시'한다.
         WebRTC 스레드에서 안전하게 작동하도록 공유 변수 사용.
         """
+        # (★ 디버깅!) recv()가 호출되는지 확인 (처음 10프레임만 로그)
+        self.frame_count += 1
+        if self.frame_count <= 10 or self.frame_count % 30 == 0:
+            print(f"[공장 4호] recv() 호출됨! (프레임 #{self.frame_count})")
         
         # (★ 수정!) 스레드 안전한 공유 변수로 '깃발' 확인
         with lock:
             should_capture = take_picture_flag["value"]
         
         if should_capture:
-            print("[공장 4호] '촬영 신호' 감지! 찰칵!")
+            print(f"[공장 4호] ✅ '촬영 신호' 감지! 찰칵! (프레임 #{self.frame_count})")
             
             # 1. "찰칵!" (영상 프레임을 '사진(Image)'으로 변환)
             img = frame.to_image() 
@@ -42,7 +50,7 @@ class AutoCameraTransformer(VideoTransformerBase):
                 img_container["img"] = img
                 # 4. (★ '초-중요'!) 깃발을 '즉시' 내린다!
                 take_picture_flag["value"] = False
-                print("[공장 4호] ✅ '사진' 저장 완료! 깃발 내림.")
+                print(f"[공장 4호] ✅ '사진' 저장 완료! 깃발 내림. (이미지 크기: {img.size})")
 
         # (카메라 '프리뷰'는 '계속' 보여줘야 하니까 'frame'은 '항상' 반환)
         return frame

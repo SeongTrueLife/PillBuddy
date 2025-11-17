@@ -105,6 +105,17 @@ elif st.session_state['camera_active']:
     # (★ 수정!) 카메라가 실제로 작동 중인지 확인
     camera_ready = ctx.state.playing if ctx else False
     
+    # (★ 디버깅!) 카메라 상태 표시
+    if ctx:
+        st.write(f"📷 카메라 상태: {'✅ 작동 중' if camera_ready else '⏳ 초기화 중...'}")
+        st.write(f"🔍 디버깅: ctx.state.playing = {ctx.state.playing}")
+    
+    # (★ 디버깅!) 현재 깃발 상태 확인
+    with camera_service.lock:
+        flag_status = camera_service.take_picture_flag["value"]
+        has_image = camera_service.img_container["img"] is not None
+    st.write(f"🔍 디버깅: take_picture_flag = {flag_status}, img_container에 이미지 있음 = {has_image}")
+    
     if not camera_ready:
         st.info("📷 카메라를 초기화하는 중입니다... 잠시만 기다려주세요.")
         st.rerun()
@@ -114,6 +125,7 @@ elif st.session_state['camera_active']:
         # (★ 수정!) 공유 변수로 '깃발' 세움
         with camera_service.lock:
             camera_service.take_picture_flag["value"] = True
+            print(f"[메인 공장] ✅ '촬영 신호' 전송! take_picture_flag = {camera_service.take_picture_flag['value']}")
         st.session_state["checking_for_image"] = True
         print("[메인 공장] '촬영 신호' 전송! (공유 변수에 깃발 세움)")
         st.rerun()
@@ -121,13 +133,19 @@ elif st.session_state['camera_active']:
     # (★ 수정!) '사진' 확인 로직 (폴링 방식 개선)
     if st.session_state["checking_for_image"]:
         
+        # (★ 디버깅!) 현재 상태 확인
+        with camera_service.lock:
+            current_flag = camera_service.take_picture_flag["value"]
+            has_img = camera_service.img_container["img"] is not None
+        st.write(f"🔍 대기 중... flag={current_flag}, 이미지={has_img}")
+        
         # (★ '보관함' '확인'!)
         captured_image = None
         with camera_service.lock:
             if camera_service.img_container["img"] is not None:
                 captured_image = camera_service.img_container["img"]
                 camera_service.img_container["img"] = None
-                print("[메인 공장] ✅ '사진' 발견! '상태 3'로 이동 준비...")
+                print(f"[메인 공장] ✅ '사진' 발견! 크기: {captured_image.size if captured_image else 'None'}")
 
         # (★ "어! '보관함'에 '사진'이 들어왔다!")
         if captured_image is not None:
@@ -141,7 +159,7 @@ elif st.session_state['camera_active']:
         
         # (★ 수정!) "아직... '사진'이 '안' 왔다..." - 자동 재확인
         else:
-            print("[메인 공장] ⏳ '사진' 아직 없음... 잠시 후 다시 확인...")
+            print(f"[메인 공장] ⏳ '사진' 아직 없음... (flag={current_flag}) 잠시 후 다시 확인...")
             st.info("📸 촬영 중... 잠시만 기다려주세요.")
             # (★ 수정!) time.sleep 대신 Streamlit의 자동 rerun 활용
             # 짧은 딜레이 후 자동으로 재확인 (무한 루프 방지를 위해 최대 재시도는 Streamlit이 관리)
