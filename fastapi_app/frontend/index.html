@@ -376,6 +376,10 @@
 
       function handleOverlayClick() {
         const isResultState = appState === STATES.RESULT;
+        if (isResultState && currentAudio) {
+          console.warn("현재 음성이 재생 중입니다. 재생이 끝난 뒤 다시 시도해주세요.");
+          return;
+        }
         const wasAudioPlaying = Boolean(currentAudio);
         if (!isResultState) {
           stopAllAudio();
