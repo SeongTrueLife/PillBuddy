@@ -25,23 +25,6 @@
         transition: opacity 0.3s ease;
       }
 
-      button {
-        width: 80%;
-        max-width: 360px;
-        height: 80px;
-        font-size: 1.5rem;
-        font-weight: bold;
-        background-color: #ff4b4b;
-        color: #fff;
-        border: none;
-        border-radius: 16px;
-        cursor: pointer;
-      }
-
-      button:active {
-        transform: scale(0.98);
-      }
-
       #result {
         width: 100%;
         max-width: 480px;
@@ -56,36 +39,284 @@
       #overlay {
         position: fixed;
         inset: 0;
-        display: none;
+        display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(0, 0, 0, 0.7);
+        background: rgba(0, 0, 0, 0.9);
         color: #fff;
         text-align: center;
         padding: 24px;
         font-size: 1.4rem;
         z-index: 10;
+        border: none;
+        cursor: pointer;
+        font-family: inherit;
+        transition: background 0.3s ease;
+      }
+
+      #overlay[data-state="CAMERA"] {
+        background: rgba(0, 0, 0, 0);
+      }
+
+      #overlay[data-state="RESULT"] {
+        background: rgba(0, 0, 0, 0.5);
       }
     </style>
   </head>
   <body>
     <h1>PillBuddy Demo</h1>
     <video id="preview" autoplay playsinline></video>
-    <button id="captureButton">촬영하기</button>
     <div id="result">결과가 여기에 표시됩니다.</div>
-    <div id="overlay">
-      추가 질문이 있으면 화면 아무 곳이나 터치하고 말씀하세요.
-    </div>
+    <button id="overlay" type="button">
+      <span id="overlayMessage">화면을 터치하여 시작하세요.</span>
+    </button>
 
     <script>
       const API_BASE = "http://192.168.0.13:8000";
       const sessionId = crypto.randomUUID();
       const video = document.getElementById("preview");
-      const captureButton = document.getElementById("captureButton");
       const resultDiv = document.getElementById("result");
       const overlay = document.getElementById("overlay");
+      const overlayMessage = document.getElementById("overlayMessage");
       let recognition = null;
-      let isResultMode = false;
+      let currentAudio = null;
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      let toneContext = null;
+      const EFFECT_PRESETS = {
+        INTRO: { frequency: 520, duration: 0.18 },
+        CAMERA: { frequency: 880, duration: 0.1 },
+        RESULT: { frequency: 660, duration: 0.15 },
+        DEFAULT: { frequency: 700, duration: 0.12 },
+      };
+      const PROMPTS = Object.freeze({
+        overlay: {
+          INTRO: "화면을 터치하여 PillBuddy를 시작하세요.",
+          CAMERA: "촬영하려면 화면을 터치하세요.",
+          RESULT:
+            "추가 질문이 있다면 화면을 터치하고 말로 PillBuddy에게 질문해주세요.",
+        },
+        speech: {
+          INTRO_GREETING:
+            "안녕하세요, PillBuddy입니다. 촬영할 알약을 준비하시고, 화면 아무 곳이나 누르면 사진이 찍힙니다. 준비되셨다면 화면을 눌러주세요.",
+          CAMERA_SHUTTER: "찰칵, 사진을 촬영합니다.",
+          CAMERA_PROCESSING: "분석 중입니다. 잠시만 기다려 주세요.",
+          FOLLOWUP_LISTENING: "지금 질문을 말씀해주세요.",
+        },
+      });
+      const STATES = Object.freeze({
+        INTRO: "INTRO",
+        CAMERA: "CAMERA",
+        RESULT: "RESULT",
+      });
+      let appState = STATES.INTRO;
+      let isCapturing = false;
+      let lastPillName = "";
+      let lastScript = "";
+      let lastResultMarkup = "";
+      let isListeningFollowup = false;
+      let isProcessingFollowup = false;
+      let shouldAutoStartFollowup = false;
+      let isOverlayLocked = false;
+
+      function queueAutoFollowup() {
+        shouldAutoStartFollowup = true;
+      }
+
+      function tryAutoStartFollowup() {
+        if (!shouldAutoStartFollowup) {
+          return;
+        }
+        if (isProcessingFollowup || isListeningFollowup) {
+          return;
+        }
+        shouldAutoStartFollowup = false;
+        handleResultTap({ allowAutoStart: false, fromAuto: true });
+      }
+
+      function getToneContext() {
+        if (!AudioContextClass) {
+          console.warn("Web Audio API is not supported in this browser.");
+          return null;
+        }
+        if (!toneContext) {
+          toneContext = new AudioContextClass();
+        }
+        if (toneContext.state === "suspended") {
+          toneContext.resume();
+        }
+        return toneContext;
+      }
+
+      function playTone({ frequency, duration }) {
+        const ctx = getToneContext();
+        if (!ctx) {
+          return;
+        }
+        const now = ctx.currentTime;
+        const oscillator = ctx.createOscillator();
+        const gainNode = ctx.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(frequency, now);
+        gainNode.gain.setValueAtTime(0.18, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        oscillator.connect(gainNode);
+        gainNode.connect(ctx.destination);
+        oscillator.start(now);
+        oscillator.stop(now + duration);
+      }
+
+      function playEffectForState(state) {
+        const preset = EFFECT_PRESETS[state] || EFFECT_PRESETS.DEFAULT;
+        playTone(preset);
+      }
+
+      function triggerVibration(duration = 700) {
+        if ("vibrate" in navigator) {
+          navigator.vibrate(duration);
+        }
+      }
+
+      function clearCurrentAudio({ triggerAutoFollowup = false } = {}) {
+        if (!currentAudio) {
+          return;
+        }
+        try {
+          currentAudio.pause();
+          currentAudio.currentTime = 0;
+        } catch (error) {
+          console.warn("[Audio] Failed to stop current audio", error);
+        }
+        currentAudio = null;
+        if (triggerAutoFollowup) {
+          queueAutoFollowup();
+        }
+      }
+
+      function stopAllAudio({ triggerAutoFollowup = false } = {}) {
+        clearCurrentAudio({ triggerAutoFollowup });
+        if ("speechSynthesis" in window) {
+          window.speechSynthesis.cancel();
+        }
+      }
+
+      async function playServerAudio(audioBase64) {
+        if (!audioBase64) {
+          alert("오디오 데이터가 없습니다.");
+          return;
+        }
+        clearCurrentAudio();
+        return new Promise((resolve) => {
+          const audio = new Audio("data:audio/mp3;base64," + audioBase64);
+          currentAudio = audio;
+          audio.onended = () => {
+            if (currentAudio === audio) {
+              currentAudio = null;
+            }
+            unlockOverlay();
+            resolve();
+          };
+          audio.onerror = (event) => {
+            console.warn("[Audio] Playback error", event);
+            if (currentAudio === audio) {
+              currentAudio = null;
+            }
+            unlockOverlay();
+            resolve();
+          };
+          audio
+            .play()
+            .catch((error) => {
+              console.warn("[Audio] Unable to start playback", error);
+              if (currentAudio === audio) {
+                currentAudio = null;
+              }
+              unlockOverlay();
+              resolve();
+            });
+        });
+      }
+
+      function speakText(text) {
+        if (!text) {
+          return;
+        }
+        if (!("speechSynthesis" in window)) {
+          console.warn("speechSynthesis is not supported in this browser.");
+          return;
+        }
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = "ko-KR";
+        utterance.rate = 1;
+        utterance.pitch = 1;
+        window.speechSynthesis.speak(utterance);
+      }
+
+      function escapeHtml(text = "") {
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function formatTextAsHtml(text = "") {
+        return escapeHtml(text).replace(/\n/g, "<br />");
+      }
+
+      function renderResultView({ pillName, script }) {
+        const safeScript = formatTextAsHtml(script);
+        const safePillName = escapeHtml(pillName);
+        resultDiv.dataset.mode = "result";
+        resultDiv.innerHTML = `
+          <div><strong>약 이름:</strong> ${safePillName}</div>
+          <div><strong>설명:</strong><div>${safeScript}</div></div>
+          <p><em>추가 질문이 있다면 화면을 터치하세요.</em></p>
+        `;
+        lastResultMarkup = resultDiv.innerHTML;
+      }
+
+      function renderFollowupListening() {
+        resultDiv.dataset.mode = "listening";
+        resultDiv.innerHTML = `
+          <div><strong>약 이름:</strong> ${escapeHtml(lastPillName || "-")}</div>
+          <em>지금 질문을 말씀해주세요...</em>
+        `;
+        speakText(PROMPTS.speech.FOLLOWUP_LISTENING);
+      }
+
+      function renderFollowupPending(question) {
+        resultDiv.dataset.mode = "pending";
+        resultDiv.innerHTML = `
+          <div><strong>약 이름:</strong> ${escapeHtml(
+            lastPillName || "-"
+          )}</div>
+          <div><strong>사용자 질문:</strong> ${formatTextAsHtml(question)}</div>
+          <em>AI가 답변을 준비하고 있습니다...</em>
+        `;
+      }
+
+      function renderFollowupAnswer({ pillName, question, answer }) {
+        const safePill = escapeHtml(pillName || lastPillName || "-");
+        const safeQuestion = formatTextAsHtml(question);
+        const safeAnswer = formatTextAsHtml(answer);
+        resultDiv.dataset.mode = "answer";
+        resultDiv.innerHTML = `
+          <div><strong>약 이름:</strong> ${safePill}</div>
+          <div><strong>사용자 질문:</strong> ${safeQuestion}</div>
+          <div><strong>AI 답변:</strong><div>${safeAnswer}</div></div>
+          <p><em>추가 질문이 있다면 화면을 터치하세요.</em></p>
+        `;
+        lastResultMarkup = resultDiv.innerHTML;
+      }
+
+      function restoreLastResultView() {
+        if (!lastResultMarkup) {
+          return;
+        }
+        resultDiv.dataset.mode = "result";
+        resultDiv.innerHTML = lastResultMarkup;
+      }
 
       async function initCamera() {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
@@ -112,7 +343,159 @@
         }
       }
 
+      function setState(nextState) {
+        if (appState === nextState) {
+          return;
+        }
+        appState = nextState;
+        applyStateVisuals();
+      }
+
+      function applyStateVisuals() {
+        overlay.dataset.state = appState;
+        switch (appState) {
+          case STATES.INTRO:
+            overlayMessage.textContent = PROMPTS.overlay.INTRO;
+            video.style.opacity = 0.2;
+            break;
+          case STATES.CAMERA:
+            overlayMessage.textContent = PROMPTS.overlay.CAMERA;
+            video.style.opacity = 1;
+            break;
+        case STATES.RESULT:
+          overlayMessage.textContent = PROMPTS.overlay.RESULT;
+          video.style.opacity = 0.2;
+          if (!isListeningFollowup && !isProcessingFollowup) {
+            shouldAutoStartFollowup = false;
+          }
+          break;
+          default:
+            overlayMessage.textContent = "";
+        }
+      }
+
+      function handleOverlayClick() {
+        const isResultState = appState === STATES.RESULT;
+        const wasAudioPlaying = Boolean(currentAudio);
+        if (!isResultState) {
+          stopAllAudio();
+        }
+        playEffectForState(appState);
+        triggerVibration();
+        if (isOverlayLocked) {
+          console.warn("현재 작업 중이라 잠시만 기다려 주세요.");
+          return;
+        }
+        switch (appState) {
+          case STATES.INTRO:
+            handleIntroTap();
+            break;
+          case STATES.CAMERA:
+            handleCameraTap();
+            break;
+          case STATES.RESULT: {
+            const wantsAutoRestart =
+              wasAudioPlaying || isProcessingFollowup || shouldAutoStartFollowup;
+            stopAllAudio({ triggerAutoFollowup: false });
+            handleResultTap({
+              allowAutoStart: wantsAutoRestart,
+            });
+            break;
+          }
+          default:
+            console.warn("Unknown state tap:", appState);
+        }
+      }
+
+      function handleIntroTap() {
+        console.log("[STATE] INTRO tapped");
+        speakText(PROMPTS.speech.INTRO_GREETING);
+        setState(STATES.CAMERA);
+      }
+
+      function handleCameraTap() {
+        console.log("[STATE] CAMERA tapped");
+        if (isCapturing) {
+          console.warn("이미 촬영 중입니다. 잠시만 기다려 주세요.");
+          return;
+        }
+        speakText(PROMPTS.speech.CAMERA_SHUTTER);
+        captureAndSend();
+      }
+
+      function handleResultTap({ allowAutoStart = false } = {}) {
+        console.log("[STATE] RESULT tapped");
+        if (!lastPillName) {
+          alert("먼저 약을 촬영해주세요.");
+          setState(STATES.CAMERA);
+          return;
+        }
+        if (isProcessingFollowup) {
+          if (allowAutoStart) {
+            queueAutoFollowup();
+          }
+          console.warn("추가 질문을 처리 중입니다. 잠시만 기다려 주세요.");
+          return;
+        }
+        if (isListeningFollowup) {
+          if (allowAutoStart) {
+            queueAutoFollowup();
+          }
+          console.warn("이미 사용자의 질문을 듣고 있습니다.");
+          return;
+        }
+
+        startSpeechRecognition({
+          onStart: () => {
+            isListeningFollowup = true;
+            renderFollowupListening();
+            lockOverlay();
+          },
+          onResult: async (transcript) => {
+            if (!transcript) {
+              alert("질문을 인식하지 못했습니다. 다시 시도해주세요.");
+              return;
+            }
+            isProcessingFollowup = true;
+            try {
+              const data = await sendFollowup(transcript);
+              if (data?.audio_base64) {
+                await playServerAudio(data.audio_base64);
+              }
+            } finally {
+              isProcessingFollowup = false;
+              if (allowAutoStart) {
+                queueAutoFollowup();
+              }
+              tryAutoStartFollowup();
+            }
+          },
+          onEnd: () => {
+            isListeningFollowup = false;
+            if (!isProcessingFollowup && !shouldAutoStartFollowup) {
+              restoreLastResultView();
+            }
+            tryAutoStartFollowup();
+            if (!isProcessingFollowup && !currentAudio) {
+              unlockOverlay();
+            }
+          },
+          onError: () => {
+            isListeningFollowup = false;
+            shouldAutoStartFollowup = false;
+            if (!isProcessingFollowup) {
+              restoreLastResultView();
+            }
+            unlockOverlay();
+          },
+        });
+      }
+
       async function captureAndSend() {
+        if (isCapturing) {
+          return;
+        }
+        isCapturing = true;
         try {
           const canvas = document.createElement("canvas");
           canvas.width = video.videoWidth || 640;
@@ -126,11 +509,14 @@
 
           if (!blob) {
             alert("이미지 캡처에 실패했습니다.");
+            setState(STATES.CAMERA);
             return;
           }
 
           const formData = new FormData();
           formData.append("file", blob, "capture.jpg");
+
+          speakText(PROMPTS.speech.CAMERA_PROCESSING);
 
           const response = await fetch(
             `${API_BASE}/api/v1/pills/identify?session_id=${sessionId}`,
@@ -148,32 +534,26 @@
           const data = await response.json();
           const { pill_name, script, audio_base64 } = data;
 
-          resultDiv.innerHTML = `
-            <strong>약 이름:</strong> ${pill_name}<br />
-            <strong>설명:</strong> ${script}
-          `;
-
-          if (audio_base64) {
-            const audio = new Audio(
-              "data:audio/mp3;base64," + audio_base64
-            );
-            await audio.play();
-          } else {
-            alert("오디오 데이터가 없습니다.");
-          }
-
+          lastPillName = pill_name;
+          lastScript = script;
+          renderResultView({ pillName: pill_name, script });
           enterResultMode();
+          await playServerAudio(audio_base64);
         } catch (error) {
           console.error(error);
           alert("촬영 또는 서버 통신 중 문제가 발생했습니다: " + error.message);
+          setState(STATES.CAMERA);
+        } finally {
+          isCapturing = false;
         }
       }
 
       function enterResultMode() {
-        isResultMode = true;
-        video.style.opacity = 0.2;
-        captureButton.disabled = true;
-        overlay.style.display = "flex";
+        isListeningFollowup = false;
+        isProcessingFollowup = false;
+        shouldAutoStartFollowup = false;
+        unlockOverlay();
+        setState(STATES.RESULT);
       }
 
       function playFeedback() {
@@ -192,7 +572,7 @@
         }
       }
 
-      function startSpeechRecognition() {
+      function startSpeechRecognition({ onResult, onStart, onEnd, onError }) {
         const SpeechRecognition =
           window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
@@ -209,20 +589,23 @@
         recognition.interimResults = false;
         recognition.maxAlternatives = 1;
 
-        recognition.onstart = () => playFeedback();
-        recognition.onend = () => playFeedback();
+        recognition.onstart = () => {
+          playFeedback();
+          onStart?.();
+        };
+        recognition.onend = () => {
+          playFeedback();
+          onEnd?.();
+        };
         recognition.onerror = (event) => {
           console.error(event);
           alert("음성 인식 중 오류가 발생했습니다.");
+          onError?.(event);
         };
 
         recognition.onresult = async (event) => {
           const transcript = event.results[0][0].transcript.trim();
-          if (!transcript) {
-            alert("질문을 인식하지 못했습니다. 다시 시도해주세요.");
-            return;
-          }
-          await sendFollowup(transcript);
+          await onResult?.(transcript);
         };
 
         recognition.start();
@@ -230,10 +613,7 @@
 
       async function sendFollowup(question) {
         try {
-          resultDiv.innerHTML = `
-            <strong>사용자 질문:</strong> ${question}<br />
-            <em>AI가 답변을 준비하고 있습니다...</em>
-          `;
+            renderFollowupPending(question);
 
           const response = await fetch(`${API_BASE}/api/v1/pills/followup`, {
             method: "POST",
@@ -252,38 +632,41 @@
           }
 
           const data = await response.json();
-          resultDiv.innerHTML = `
-            <strong>약 이름:</strong> ${data.pill_name}<br />
-            <strong>사용자 질문:</strong> ${question}<br />
-            <strong>AI 답변:</strong> ${data.answer}
-          `;
-
-          if (data.audio_base64) {
-            const audio = new Audio(
-              "data:audio/mp3;base64," + data.audio_base64
-            );
-            await audio.play();
-          }
+          lastPillName = data.pill_name || lastPillName;
+          renderFollowupAnswer({
+            pillName: lastPillName,
+            question,
+            answer: data.answer,
+          });
+          return data;
         } catch (error) {
           console.error(error);
           alert("추가 질문 처리 중 오류가 발생했습니다: " + error.message);
+          restoreLastResultView();
+        } finally {
+          unlockOverlay();
         }
       }
 
-      captureButton.addEventListener("click", () => {
-        if (!isResultMode) {
-          captureAndSend();
-        }
-      });
+      function lockOverlay() {
+        isOverlayLocked = true;
+        overlay.disabled = true;
+        overlay.classList.add("overlay-locked");
+      }
 
-      overlay.addEventListener("click", () => {
-        if (isResultMode) {
-          startSpeechRecognition();
-        }
-      });
+      function unlockOverlay() {
+        isOverlayLocked = false;
+        overlay.disabled = false;
+        overlay.classList.remove("overlay-locked");
+      }
 
-      window.addEventListener("load", initCamera);
+      overlay.addEventListener("click", handleOverlayClick);
+      window.addEventListener("load", () => {
+        initCamera();
+        applyStateVisuals();
+      });
     </script>
   </body>
 </html>
+
 
