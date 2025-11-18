@@ -123,3 +123,39 @@ def answer_follow_up_backup(user_question: str, item_name: str) -> str:
         print(f"[rag_service] Failed to answer follow-up backup: {exc}")
         return "죄송합니다. 추가 질문에 답변하는 데 실패했습니다."
 
+
+def answer_followup_question(pill_name: str, question: str) -> str:
+    drug_info = fetch_drug_info(pill_name)
+    if drug_info:
+        context = drug_info
+        prompt = f"""
+        당신은 시각장애인 환자를 돕는 친절한 약사입니다.
+
+        [약 정보]
+        {context}
+
+        사용자가 보고 있는 약은 "{pill_name}"입니다.
+        사용자가 이렇게 질문했습니다: "{question}"
+
+        위 약 정보에 최대한 근거해서 친절하게 답변해 주세요.
+        만약 정보에 없는 내용이라면 "해당 정보는 현재 데이터에 없어 정확한 답을 드리기 어렵습니다. 의사나 약사와 상담해주세요."라고 안내하세요.
+        """
+    else:
+        prompt = f"""
+        당신은 시각장애인 환자를 돕는 친절한 약사입니다.
+
+        사용자가 보고 있는 약은 "{pill_name}"입니다.
+        하지만 공식 데이터베이스에서 추가 정보를 찾지 못했습니다.
+        사용자가 이렇게 질문했습니다: "{question}"
+
+        당신이 일반적으로 알고 있는 지식을 바탕으로 답변하되,
+        "이 답변은 일반 정보에 기반한 참고용이며 정확하지 않을 수 있으니 반드시 의사나 약사와 상담하세요."라는 문장을 반드시 덧붙여 주세요.
+        """
+
+    try:
+        response = MODEL.generate_content(prompt)
+        return response.text
+    except Exception as exc:
+        print(f"[rag_service] Failed to answer followup question: {exc}")
+        return "죄송합니다. 추가 질문에 답변하는 데 실패했습니다."
+
